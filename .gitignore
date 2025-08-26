@@ -70,3 +70,5 @@ datasets
 *.mtl
 *.STL
 **/env.yaml
+
+unitree_model/
