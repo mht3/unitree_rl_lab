@@ -27,7 +27,7 @@ class UnitreeArticulationCfg(ArticulationCfg):
     soft_joint_pos_limit_factor = 0.9
 
 
-UNITREE_MODEL_DIR = "/hdd/users/mat028/research/unitree_rl_lab/unitree_model"
+UNITREE_MODEL_DIR = "//home/hongzhan/unitree_balance/unitree_rl_lab/unitree_model"
 
 
 UNITREE_GO2_CFG = UnitreeArticulationCfg(
@@ -534,16 +534,37 @@ UNITREE_G1_23DOF_CFG_IMPLICIT = UnitreeArticulationCfg(
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.8),
         joint_pos={
-            ".*_hip_pitch_joint": -0.1,
-            ".*_knee_joint": 0.3,
-            ".*_ankle_pitch_joint": -0.2,
             ".*_shoulder_pitch_joint": 0.3,
             "left_shoulder_roll_joint": 0.25,
             "right_shoulder_roll_joint": -0.25,
             ".*_elbow_joint": 0.97,
             "left_wrist_roll_joint": 0.15,
             "right_wrist_roll_joint": -0.15,
+            "left_hip_pitch_joint": -0.22,
+            "left_hip_roll_joint": -0.013,
+            "left_hip_yaw_joint": -0.13,
+            "left_knee_joint": -0.009,
+            "left_ankle_pitch_joint": 0.249,
+            "left_ankle_roll_joint": -0.019,
+            "right_hip_pitch_joint": -0.0283,
+            "right_hip_roll_joint": -0.00477,
+            "right_hip_yaw_joint": -0.1085,
+            "right_knee_joint": 0.38795,
+            "right_ankle_pitch_joint": -0.351,
+            "right_ankle_roll_joint": -0.00481,
         },
+        # joint_pos={
+        #     "left_hip_pitch_joint": -0.1,
+        #     "right_hip_pitch_joint": -0.1,
+        #     ".*_knee_joint": 0.3,
+        #     ".*_ankle_pitch_joint": -0.2,
+        #     ".*_shoulder_pitch_joint": 0.3,
+        #     "left_shoulder_roll_joint": 0.25,
+        #     "right_shoulder_roll_joint": -0.25,
+        #     ".*_elbow_joint": 0.97,
+        #     "left_wrist_roll_joint": 0.15,
+        #     "right_wrist_roll_joint": -0.15,
+        # },
         joint_vel={".*": 0.0},
     ),
     actuators={
