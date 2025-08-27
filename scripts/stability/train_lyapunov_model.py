@@ -91,20 +91,21 @@ if __name__ == '__main__':
     theta_eq, theta_dot_eq = 0., 0.
     X_0 = torch.Tensor([theta_eq, theta_dot_eq])
 
-    ### Start training process ##
+    ### Start training process ###
     lr = 0.01
     ### Load falsifier
-    falsifier = Falsifier(state_min, state_max, epsilon=0., scale=0.05, frequency=100, num_samples=5)
-    ### Start training process ##
+    # falsifier = Falsifier(state_min, state_max, epsilon=0., scale=0.05, frequency=100, num_samples=5)
+    falsifier = None
+    ### Start training process ###
     loss_fn = LyapunovRisk(lyapunov_factor=1., lie_factor=1., equilibrium_factor=1.)
     circle_tuning_loss_fn = CircleTuningLoss(state_max=np.mean(state_max), tuning_factor=0.1)
     ### load model and training pipeline with initialized LQR weights ###
-    model_1 = load_model()
-    optimizer_1 = torch.optim.Adam(model_1.parameters(), lr=lr)
-    trainer_1 = InvertedPendulumTrainer(model_1, lr, optimizer_1, loss_fn, circle_tuning_loss_fn=circle_tuning_loss_fn,
-                        falsifier=falsifier, loss_mode='true')
-    true_loss = trainer_1.train(X, X_0, epochs=1250, verbose=True)
+    model = load_model()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    trainer = G1BalanceLyapunovTrainer(model, policy, lr, optimizer, loss_fn, circle_tuning_loss_fn=circle_tuning_loss_fn,
+                                      falsifier=falsifier, loss_mode='approx_lie')
+    true_loss = trainer.train(X, X_0, epochs=1250, verbose=True)
     # save model corresponding to true loss
-    torch.save(model_1.state_dict(), 'examples/inverted_pendulum/models/pendulum_lyapunov_model_1.pt')
+    torch.save(model.state_dict(), 'examples/inverted_pendulum/models/pendulum_lyapunov_model_1.pt')
 
     plot_loss(true_loss, 'examples/inverted_pendulum/results/true_loss.png')
