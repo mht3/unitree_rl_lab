@@ -24,7 +24,8 @@ from unitree_rl_lab.tasks.balance import mdp
 # implicit motor (uses PDControl under the hood)
 USE_IMPLICIT = True
 # actions are torques and not position
-USE_TORQUE = False
+USE_TORQUE = True
+IF_STANCE = True
 
 COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
     size=(8.0, 8.0),
@@ -184,6 +185,35 @@ class CommandsCfg:
         ),
     )
 
+# --- choose conservative fractions of your actuator effort limits ---
+GROUP_SCALE = {
+    "N7520-14.3": 0.6,          # hips (pitch/yaw) + waist_yaw
+    "N7520-22.5": 0.6,          # hip_roll + knees
+    "N5020-16": 0.7,            # shoulder/elbow/wrist_roll
+    "N5020-16-parallel": 0.7,   # ankles
+}
+
+# --- convert actuator effort limits into per-regex torque scales (Nm) ---
+effort_scale_dict = {
+    # group N7520-14.3
+    ".*_hip_pitch_.*": GROUP_SCALE["N7520-14.3"] * 88.0,
+    ".*_hip_yaw_.*":   GROUP_SCALE["N7520-14.3"] * 88.0,
+    "waist_yaw_joint": GROUP_SCALE["N7520-14.3"] * 88.0,
+
+    # group N7520-22.5
+    ".*_hip_roll_.*":  GROUP_SCALE["N7520-22.5"] * 139.0,
+    ".*_knee_.*":      GROUP_SCALE["N7520-22.5"] * 139.0,
+
+    # group N5020-16
+    ".*_shoulder_.*":  GROUP_SCALE["N5020-16"] * 25.0,
+    ".*_elbow_.*":     GROUP_SCALE["N5020-16"] * 25.0,
+    ".*_wrist_roll_.*":GROUP_SCALE["N5020-16"] * 25.0,
+
+    # group N5020-16-parallel
+    ".*ankle.*":       GROUP_SCALE["N5020-16-parallel"] * 35.0,
+}
+
+effort_clip_dict = {k: (-v, v) for k, v in effort_scale_dict.items()}
 
 @configclass
 class ActionsCfg:
@@ -193,7 +223,9 @@ class ActionsCfg:
         # TODO scale should be in real torque limit range?
         JointEffortAction = mdp.JointEffortActionCfg(asset_name="robot", 
 													 joint_names=[".*"], 
-													 scale=1.0) # to be defined
+													 scale=effort_scale_dict,
+													 clip = effort_clip_dict
+													 ) # to be defined
     else:
         JointPositionAction = mdp.JointPositionActionCfg(
             asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True
@@ -274,37 +306,70 @@ class RewardsCfg:
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-5.0)
     energy = RewTerm(func=mdp.energy, weight=-2e-5)
 
-    joint_deviation_arms = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    ".*_shoulder_.*_joint",
-                    ".*_elbow_joint",
-                    ".*_wrist_.*",
-                ],
-            )
-        },
-    )
-    joint_deviation_waists = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-1,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot",
-                joint_names=[
-                    "waist.*",
-                ],
-            )
-        },
-    )
-    joint_deviation_legs = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_roll_joint", ".*_hip_yaw_joint"])},
-    )
+    if IF_STANCE:
+        joint_deviation_arms = RewTerm(
+            func=mdp.joint_deviation_l1_custom,
+            weight=-0.1,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        ".*_shoulder_.*_joint",
+                        ".*_elbow_joint",
+                        ".*_wrist_.*",
+                    ],
+                )
+            },
+        )
+        joint_deviation_waists = RewTerm(
+            func=mdp.joint_deviation_l1_custom,
+            weight=-1,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        "waist.*",
+                    ],
+                )
+            },
+        )
+        joint_deviation_legs = RewTerm(
+            func=mdp.joint_deviation_l1_custom,
+            weight=-1.0,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_roll_joint", ".*_hip_yaw_joint"])},
+        )
+    else:
+        joint_deviation_arms = RewTerm(
+            func=mdp.joint_deviation_l1,
+            weight=-0.1,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        ".*_shoulder_.*_joint",
+                        ".*_elbow_joint",
+                        ".*_wrist_.*",
+                    ],
+                )
+            },
+        )
+        joint_deviation_waists = RewTerm(
+            func=mdp.joint_deviation_l1,
+            weight=-1,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot",
+                    joint_names=[
+                        "waist.*",
+                    ],
+                )
+            },
+        )
+        joint_deviation_legs = RewTerm(
+            func=mdp.joint_deviation_l1,
+            weight=-1.0,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_roll_joint", ".*_hip_yaw_joint"])},
+        )
 
     # -- robot
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-5.0)
