@@ -23,8 +23,45 @@ from unitree_rl_lab.tasks.balance import mdp
 
 # implicit motor (uses PDControl under the hood)
 USE_IMPLICIT = True
-# actions are torques and not position
+# actions are torques and not position (deployment code can't handle this yet)
 USE_TORQUE = False
+# use lower body + waist only in action space (13 actions vs 23)
+USE_LOWER_ONLY = False
+
+ANKLES = [".*ankle.*"]
+HIPS = [".*_hip_roll_.*", ".*_hip_pitch_.*", ".*_hip_yaw_.*"]
+KNEES = [".*_knee_.*"]
+WAIST = ["waist_yaw_joint"]
+LOWER_JOINTS = HIPS + KNEES + ANKLES + WAIST
+
+if USE_LOWER_ONLY:
+    # lower body + waist only
+    ACTION_JOINTS = LOWER_JOINTS
+else:
+
+    ACTION_JOINTS = [".*"]
+
+if USE_TORQUE:
+    group_scale = {
+        "N7520-14.3": 0.6,          # hips (pitch/yaw) + waist_yaw
+        "N7520-22.5": 0.6,          # hip_roll + knees
+        "N5020-16": 0.7,            # shoulder/elbow/wrist_roll
+        "N5020-16-parallel": 0.7,   # ankles
+    }
+
+    effort_scale_dict = {
+        ".*_hip_pitch_.*": group_scale["N7520-14.3"] * 88.0,
+        ".*_hip_yaw_.*":   group_scale["N7520-14.3"] * 88.0,
+        "waist_yaw_joint": group_scale["N7520-14.3"] * 88.0,
+        ".*_hip_roll_.*":  group_scale["N7520-22.5"] * 139.0,
+        ".*_knee_.*":      group_scale["N7520-22.5"] * 139.0,
+        ".*_shoulder_.*":  group_scale["N5020-16"] * 25.0,
+        ".*_elbow_.*":     group_scale["N5020-16"] * 25.0,
+        ".*_wrist_roll_.*":group_scale["N5020-16"] * 25.0,
+        ".*ankle.*":       group_scale["N5020-16-parallel"] * 35.0,
+    }
+    effort_clip_dict = {k: (-v, v) for k, v in effort_scale_dict.items()}
+
 
 COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
     size=(8.0, 8.0),
@@ -120,15 +157,13 @@ class EventCfg:
     )
 
     # reset
-    base_external_force_torque = EventTerm(
+    base_external_force = EventTerm(
         func=mdp.apply_external_force_torque,
-        mode="reset",
-        params={
+            mode="reset",
+            params={
             "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
-            # "force_range": (-5, 5),
-            # "torque_range": (-5, 5),
-            "force_range": (-10, 10),
-            "torque_range": (-10, 10),
+            "force_range": (-5, 5),
+            "torque_range": (-5, 5),
         },
     )
 
@@ -158,12 +193,23 @@ class EventCfg:
     )
 
     # interval
-    push_robot = EventTerm(
-        func=mdp.push_by_setting_velocity,
-        mode="interval",
-        interval_range_s=(5.0, 5.0),
-        params={"velocity_range": {"x": (0, 0), "y": (0, 0)}},
-    )
+
+    # base_external_force_torque_interval = EventTerm(
+    #     func=mdp.apply_external_force_torque,
+    #         mode="interval",
+    #         interval_range_s=(5.0, 10),
+    #         params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
+    #         "force_range": (-5, 5),
+    #         "torque_range": (-5, 5),
+    #     },
+    # )
+    # push_robot = EventTerm(
+    #     func=mdp.push_by_setting_velocity,
+    #     mode="interval",
+    #     interval_range_s=(5.0, 5.0),
+    #     params={"velocity_range": {"x": (0, 0), "y": (0, 0)}},
+    # )
 
 
 @configclass
@@ -188,16 +234,17 @@ class CommandsCfg:
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
-
     if USE_TORQUE:
-        # TODO scale should be in real torque limit range?
         JointEffortAction = mdp.JointEffortActionCfg(asset_name="robot", 
-													 joint_names=[".*"], 
-													 scale=1.0) # to be defined
+													 joint_names=ACTION_JOINTS, 
+													 scale=effort_scale_dict,
+													 clip = effort_clip_dict
+													)
     else:
         JointPositionAction = mdp.JointPositionActionCfg(
-            asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True
+            asset_name="robot", joint_names=ACTION_JOINTS, scale=0.25, use_default_offset=True
         )
+
 
 
 
@@ -236,11 +283,6 @@ class ObservationsCfg:
         joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05)
         last_action = ObsTerm(func=mdp.last_action)
-        # gait_phase = ObsTerm(func=mdp.gait_phase, params={"period": 0.8})
-        # height_scanner = ObsTerm(func=mdp.height_scan,
-        #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-        #     clip=(-1.0, 5.0),
-        # )
 
         def __post_init__(self):
             self.history_length = 5
@@ -311,17 +353,6 @@ class RewardsCfg:
     base_height = RewTerm(func=mdp.base_height_l2, weight=-10, params={"target_height": 0.78})
 
     # -- feet
-    # gait = RewTerm(
-    #     func=mdp.feet_gait,
-    #     weight=0.5,
-    #     params={
-    #         "period": 0.8,
-    #         "offset": [0.0, 0.5],
-    #         "threshold": 0.55,
-    #         "command_name": "base_velocity",
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*ankle_roll.*"),
-    #     },
-    # )
     feet_slide = RewTerm(
         func=mdp.feet_slide,
         weight=-0.2,
@@ -338,16 +369,16 @@ class RewardsCfg:
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*ankle_pitch.*"),
         },
     )
-    # feet_clearance = RewTerm(
-    #     func=mdp.foot_clearance_reward,
-    #     weight=1.0,
-    #     params={
-    #         "std": 0.05,
-    #         "tanh_mult": 2.0,
-    #         "target_height": 0.1,
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*ankle_roll.*"),
-    #     },
-    # )
+    feet_clearance = RewTerm(
+        func=mdp.foot_clearance_reward,
+        weight=1.0,
+        params={
+            "std": 0.05,
+            "tanh_mult": 2.0,
+            "target_height": 0.1,
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*ankle_roll.*"),
+        },
+    )
 
     # -- other
     undesired_contacts = RewTerm(
