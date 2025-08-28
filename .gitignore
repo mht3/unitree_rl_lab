@@ -71,4 +71,6 @@ datasets
 *.STL
 **/env.yaml
 
+# unitree file (if added here)
 unitree_model/
+**/
